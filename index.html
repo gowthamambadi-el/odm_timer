@@ -56,6 +56,17 @@
       line-height: 1;
       text-shadow: 0 4px 14px rgba(0, 0, 0, 0.75), 0 1px 3px rgba(0, 0, 0, 0.5);
       z-index: 2;
+      cursor: text;
+      outline: none;
+    }
+
+    .timer[contenteditable="true"] {
+      border-bottom: 3px solid rgba(255, 255, 255, 0.8);
+      text-shadow: 0 4px 14px rgba(0, 0, 0, 0.8);
+    }
+
+    .editor-hint {
+      display: none;
     }
 
     .controls {
@@ -124,7 +135,7 @@
 
   <div class="overlay"></div>
 
-  <div class="timer" id="timer-display">15:00</div>
+  <div class="timer" id="timer-display" contenteditable="false">15:00</div>
   <div class="controls">
     <button class="btn-start" onclick="startTimer()">Start</button>
     <button class="btn-pause" onclick="pauseTimer()">Pause</button>
@@ -136,16 +147,20 @@
   <script>
     const TOTAL_SECONDS = 15 * 60;
     let totalSeconds = TOTAL_SECONDS;
+    let durationSeconds = TOTAL_SECONDS;
     let timerInterval = null;
 
     const timerDisplay = document.getElementById("timer-display");
     const music = document.getElementById("music");
 
-    function render() {
+    function fmtDisplay() {
       const minutes = Math.floor(totalSeconds / 60);
       const seconds = totalSeconds % 60;
-      timerDisplay.textContent =
-        String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+      return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+    }
+
+    function render() {
+      timerDisplay.textContent = fmtDisplay();
     }
 
     function updateTimer() {
@@ -163,6 +178,7 @@
 
     function startTimer() {
       if (timerInterval) return;
+      exitEditMode();
 
       if (music.src && !music.error) {
         music.play().catch(() => {});
@@ -181,11 +197,69 @@
     function resetTimer() {
       clearInterval(timerInterval);
       timerInterval = null;
-      totalSeconds = TOTAL_SECONDS;
-      timerDisplay.textContent = "15:00";
+      totalSeconds = durationSeconds;
+      render();
       music.pause();
       music.currentTime = 0;
     }
+
+    function parseInput(str) {
+      const clean = str.replace(/\s/g, "");
+      const pieces = clean.split(":");
+      if (pieces.length === 2) {
+        const m = parseInt(pieces[0], 10);
+        const s = parseInt(pieces[1], 10);
+        if (!isNaN(m) && !isNaN(s) && m >= 0 && s >= 0 && s < 60) {
+          return m * 60 + s;
+        }
+      }
+      const justMinutes = parseInt(clean, 10);
+      if (!isNaN(justMinutes) && justMinutes >= 1) {
+        return justMinutes * 60;
+      }
+      return null;
+    }
+
+    function enterEditMode() {
+      if (timerInterval) return;
+      timerDisplay.contentEditable = "true";
+      timerDisplay.focus();
+      const range = document.createRange();
+      range.selectNodeContents(timerDisplay);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+
+    function exitEditMode() {
+      timerDisplay.contentEditable = "false";
+      window.getSelection().removeAllRanges();
+    }
+
+    function commitEdit() {
+      const raw = timerDisplay.textContent;
+      const parsed = parseInput(raw);
+      if (parsed !== null && parsed > 0) {
+        durationSeconds = parsed;
+        totalSeconds = parsed;
+        render();
+      } else {
+        render();
+      }
+      exitEditMode();
+    }
+
+    timerDisplay.addEventListener("click", enterEditMode);
+    timerDisplay.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitEdit();
+      } else if (e.key === "Escape") {
+        render();
+        exitEditMode();
+      }
+    });
+    timerDisplay.addEventListener("blur", commitEdit);
 
     if (music.addEventListener) {
       music.addEventListener("error", () => {
